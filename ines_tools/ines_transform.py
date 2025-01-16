@@ -5,7 +5,16 @@ from spinedb_api.exception import NothingToCommit
 import typing
 from sys import exit
 
+# from ines_tools.tool_specific.mathprog.read_mathprog_model_data import alternative_name
 #  from ines_tools.tool_specific.mathprog.write_mathprog_model_data import entity_byname
+
+operations = {
+    "multiply": lambda x, y: x * y,
+    "add": lambda x, y: x + y,
+    "subtract": lambda x, y: x - y,
+    "divide": lambda x, y: x / y,
+    "constant": lambda x, y: y
+}
 
 
 def assert_success(result, warn=False):
@@ -15,6 +24,14 @@ def assert_success(result, warn=False):
     elif error:
         raise RuntimeError(error)
     return result[0] if len(result) == 2 else result[:-1]
+
+
+def is_numeric(string):
+    try:
+        float(string)
+        return True
+    except ValueError:
+        return False
 
 
 def copy_entities(
@@ -33,7 +50,7 @@ def copy_entities(
                 target_class = target
             else:
                 if len(target) > 1:  # Ugly way to check if there was a list or multiple dicts instead of just single dict
-                    print("Wrong format in the entity copy definition: " + target)
+                    print("Wrong format in the entity copy definition: " + target_class)
                 # target_class, target_def = next(iter(target.items()))  # alternative to next two lines
                 for target_class, target_def in target.items():
                     pass  # Based on the previous check, there should be only one dict
@@ -166,6 +183,8 @@ def transform_parameters(
                         parameter["type"],
                         target_param_def,
                         ts_to_map,
+                        source_db = source_db,
+                        source_entity_class = source_entity_class
                     )
                     for (
                         target_parameter_name,
@@ -367,11 +386,57 @@ def transform_parameters_entity_from_parameter(
 
 
 def process_parameter_transforms(
-    entity_byname_orig, p_value, p_type, target_param_def, ts_to_map
+        entity_byname_orig,
+        p_value,
+        p_type,
+        target_param_def,
+        ts_to_map=False,
+        source_db=None,
+        source_entity_class=None,
+        alternative_name=None
 ):
-    target_param_value = {}
     target_multiplier = None
-    target_positions = []
+    operand_value = None
+    target_param_dict = {}
+    list_of_elements = [None]
+    # Interpret the target param dict definition
+    if isinstance(target_param_def, dict):  # If target_param_def contains a dict, break it up and copy content of "target" to target_param_def (it's now a string or a list)
+        target_param_dict = target_param_def
+        if not target_param_dict.get("target"):
+            exit("When using dict in target_param_def, one needs to have a 'target' defined")
+        target_param_def = target_param_dict.get("target")
+        if target_param_dict.get("operation"):
+            if source_db is None or source_entity_class is None:
+                exit("source_db and source_entity_class required for arithmetic operations")
+            if not target_param_dict.get("with"):
+                exit("When dict has 'operation', it also needs 'with' in target_param_def")
+            else:
+                if is_numeric(target_param_dict.get("with")):
+                    operand_value = float(target_param_dict.get("with"))
+                elif isinstance(target_param_dict.get("with"), str):
+                    try:
+                        operand = source_db.get_parameter_value_item(
+                            entity_class_name=source_entity_class,  # Adjust based on your structure
+                            parameter_definition_name=target_param_dict.get("with"),
+                            entity_byname=entity_byname_orig,
+                            alternative_name=alternative_name
+                        )
+                        operand_value = api.from_database(operand["value"], operand["type"])
+                    except:
+                        exit("Could not get a parameter value for an operand in " + source_entity_class + " " + target_param_dict.get("with"))
+                else:
+                    exit("In target_param_def dict, with must be a float or a string (parameter name)")
+                if not isinstance(operand_value, float):
+                    exit("Multiplied/added/subtracted/divided operand must be a float. " + source_entity_class + " " +
+                         target_param_dict.get("with"))
+        if target_param_dict.get("for_each"):
+            list_of_elements = []
+            for entity in source_db.get_entity_items(
+                entity_class_name = target_param_dict.get("for_each"),
+                alternative_name = alternative_name
+            ):
+                list_of_elements.append(entity["entity_byname"])
+    # Do the manipulations
     if isinstance(target_param_def, list):
         target_param = target_param_def[0]
         if len(target_param_def) > 1:
@@ -390,30 +455,40 @@ def process_parameter_transforms(
             + target_param_def[0]
             + ". Could be parameter default value set to none."
         )
-    if isinstance(data, float) and target_multiplier is not None:
-        data = data * target_multiplier
-    else:
-        if target_multiplier:
-            if isinstance(data, TimeSeries):
-                data.values = data.values * target_multiplier
-            elif len(target_param_def) < 4:
-                data.values = [i * target_multiplier for i in data.values]
-            else:
-                collect_data_values = []
-                collect_data_indexes = []
-                for first_inside_dim in data.values:
-                    collect_data_values.extend(first_inside_dim.values)
-                    collect_data_indexes.extend(first_inside_dim.indexes)
-                data.values = [i * target_multiplier for i in collect_data_values]
-                data.indexes = collect_data_indexes
-        if ts_to_map:
-            if isinstance(data, TimeSeries):
-                data = api.Map(
-                    [str(x) for x in data.indexes],
-                    data.values,
-                    index_name=data.index_name,
-                )
-                # data = api.convert_containers_to_maps(data)
+
+    if target_param_dict.get("operation"):
+        operation = target_param_dict.get("operation")
+        if operation not in operations:
+            raise ValueError(f"Invalid operation: {operation}. Must be one of: {list(operations.keys())}")
+        data = apply_operation(data, operand_value, target_param_dict)
+
+    if target_multiplier is not None:
+        if isinstance(data, float):
+            data = data * target_multiplier
+        if isinstance(data, TimeSeries):
+            data.values = data.values * target_multiplier
+        if isinstance(data, api.Map):
+            data.values = [float(i) * target_multiplier for i in data.values]
+
+    # This old code was trying to handle 2-dimensional map data, but has fallen into disrepair
+    # elif len(target_paramdef) < 4:
+    #     data.values = [i * target_multiplier for i in data.values]
+    # else:
+    #     collect_data_values = []
+    #     collect_data_indexes = []
+    #     for first_inside_dim in data.values:
+    #         collect_data_values.extend(first_inside_dim.values)
+    #         collect_data_indexes.extend(first_inside_dim.indexes)
+    #     data.values = [i * target_multiplier for i in collect_data_values]
+    #     data.indexes = collect_data_indexes
+    if ts_to_map:
+        if isinstance(data, TimeSeries):
+            data = api.Map(
+                [str(x) for x in data.indexes],
+                data.values,
+                index_name=data.index_name,
+            )
+            # data = api.convert_containers_to_maps(data)
     value, type_ = api.to_database(data)
     target_param_value = {target_param: value}
 
@@ -431,8 +506,32 @@ def process_parameter_transforms(
                 )
             entity_byname_list.append("__".join(entity_bynames))
         entity_byname_tuple = tuple(entity_byname_list)
+    if target_param_dict.get("for_each"):
+        list_of_entity_byname_tuples = []
+        for element in list_of_elements:
+            list_of_entity_byname_tuples.append(entity_byname_tuple)
 
     return target_param_value, type_, entity_byname_tuple
+
+
+def apply_operation(data, operand_value, target_param_dict):
+    op = operations.get(target_param_dict.get("operation"))
+
+    if isinstance(data, float):
+        return op(data, operand_value)
+
+    if isinstance(data, TimeSeries):
+        data.values = op(data.values, operand_value)
+        return data
+
+    if isinstance(data, api.Map):
+        if op == operations["constant"]:
+            return operand_value
+        data.values = [op(float(i), operand_value) for i in data.values]
+        return data
+
+    exit("Unmanaged data type in processing: " + data)
+
 
 
 def process_methods(source_db, target_db, parameter_methods):
