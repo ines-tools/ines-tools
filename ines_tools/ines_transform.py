@@ -163,136 +163,93 @@ def transform_parameters(
     target_db: DatabaseMapping,
     parameter_transforms,
     ts_to_map=False,
+    use_default=False,
+    default_alternative="base"
 ):
+    # This is very ugly for now - combined transform_parameters_use_default function to transform_parameters
+    # in order to have a more appropriate function interface, but I didn't do the actual joining of the functions.
+    # Just using if to split the function.
+    # Joining will require working through the logic: when default is used, one needs to have all the entities
+    # that do not have parameters also included so that the defaults can be given to those. So, pick
+    # entities (when default in use) and pick parameter_values and make some smart joining and comparing,
+    # so that you end up with a list of parameter values that also knows when to use the default (and when not to).
     for source_entity_class, sec_def in parameter_transforms.items():
-        for target_entity_class, tec_def in sec_def.items():
-            for source_param, target_param_def in tec_def.items():
-                parameters = source_db.get_parameter_value_items(
-                    entity_class_name=source_entity_class,
-                    parameter_definition_name=source_param,
-                )
-                for parameter in parameters:
-                    (
-                        target_param_value,
-                        type_,
-                        entity_byname_tuple,
-                    ) = process_parameter_transforms(
-                        parameter["entity_byname"],
-                        parameter["value"],
-                        parameter["type"],
-                        target_param_def,
-                        ts_to_map,
-                        source_db = source_db,
-                        source_entity_class = source_entity_class
-                    )
-                    for (
-                        target_parameter_name,
-                        target_value,
-                    ) in target_param_value.items():
-                        #check that entity exists
-                        target_ent = target_db.get_entity_item(
-                            entity_class_name=target_entity_class,
-                            entity_byname=entity_byname_tuple,
-                        )
-                        if target_ent:
-                            # print(target_entity_class + ', ' + target_parameter_name)
-                            assert_success(target_db.add_parameter_value_item(
-                                check=True,
-                                entity_class_name=target_entity_class,
-                                parameter_definition_name=target_parameter_name,
-                                entity_byname=entity_byname_tuple,
-                                alternative_name=parameter["alternative_name"],
-                                value=target_value,
-                                type=type_,
-                            ))
-    try:
-        target_db.commit_session("Added parameters")
-    except NothingToCommit:
-        pass
-    except DBAPIError as e:
-        print("failed to commit parameters")
-    return target_db
+        entities = source_db.get_entity_items(entity_class_name=source_entity_class) if use_default else None
 
-
-def transform_parameters_use_default(
-    source_db: DatabaseMapping,
-    target_db: DatabaseMapping,
-    parameter_transforms,
-    default_alternative="base",
-    ts_to_map=False,
-):
-    for source_entity_class, sec_def in parameter_transforms.items():
         for target_entity_class, tec_def in sec_def.items():
             for source_param, target_param_def in tec_def.items():
                 param_def_item = source_db.get_parameter_definition_item(
                     entity_class_name=source_entity_class, name=source_param
+                ) if use_default else None
+
+                # Get all parameter values at once
+                params = source_db.get_parameter_value_items(
+                    entity_class_name=source_entity_class,
+                    parameter_definition_name=source_param,
                 )
-                for source_entity in source_db.get_entity_items(
-                    entity_class_name=source_entity_class
-                ):
-                    flag_base_alt = False
-                    for parameter in source_db.get_parameter_value_items(
-                        entity_class_name=source_entity_class,
-                        parameter_definition_name=source_param,
-                        entity_name=source_entity["name"],
-                    ):
-                        if parameter["alternative_name"] == default_alternative:
-                            flag_base_alt = True
-                        (
-                            target_param_value,
-                            type_,
-                            entity_byname_tuple,
-                        ) = process_parameter_transforms(
-                            parameter["entity_byname"],
-                            parameter["value"],
-                            parameter["type"],
-                            target_param_def,
-                            ts_to_map,
-                            source_db = source_db,
-                            source_entity_class = source_entity_class
-                        )
-                        for (
-                            target_parameter_name,
-                            target_value,
-                        ) in target_param_value.items():
+
+                if use_default:
+                    entities_with_params = {tuple(p["entity_byname"]) for p in params}
+                    for entity in entities:
+                        if tuple(entity["entity_byname"]) not in entities_with_params:
+                            params.append({
+                                "entity_byname": entity["entity_byname"],
+                                "value": param_def_item["default_value"],
+                                "type": param_def_item["default_type"],
+                                "alternative_name": default_alternative
+                            })
+
+                # Process each parameter
+                for param in params:
+                    # Process parameter transformation
+                    target_param_value, type_, entity_byname_tuples = process_parameter_transforms(
+                        param["entity_byname"],
+                        param["value"],
+                        param["type"],
+                        target_param_def,
+                        ts_to_map,
+                        source_db=source_db,
+                        source_entity_class=source_entity_class,
+                    )
+
+                    # Skip default zero values
+                    if use_default and type_ != float and api.from_database(param["value"], type_) == 0:
+                        continue
+
+                    for target_parameter_name, target_value in target_param_value.items():
+                        # Would check the existence of the entity, but that shouldn't be done? At least not
+                        # without informing the user.
+                        # if not use_default:
+                        #     target_ent = target_db.get_entity_item(
+                        #         entity_class_name=target_entity_class,
+                        #         entity_byname=entity_byname_tuple,
+                        #     )
+                        #     if not target_ent:
+                        #         continue
+
+                        for entity_byname_tuple in entity_byname_tuples:
+                            # Adding entities if for_each is in use
+                            if len(entity_byname_tuples) > 1:
+                                assert_success(target_db.add_entity_item(
+                                    entity_class_name=target_entity_class,
+                                    entity_byname=entity_byname_tuple,
+                                ))
                             assert_success(target_db.add_parameter_value_item(
                                 check=True,
                                 entity_class_name=target_entity_class,
                                 parameter_definition_name=target_parameter_name,
                                 entity_byname=entity_byname_tuple,
-                                alternative_name=parameter["alternative_name"],
+                                alternative_name=param["alternative_name"],
                                 value=target_value,
                                 type=type_,
                             ))
-                    if not flag_base_alt:
-                        (
-                            target_param_value,
-                            type_,
-                            entity_byname_tuple,
-                        ) = process_parameter_transforms(
-                            source_entity["entity_byname"],
-                            param_def_item["default_value"],
-                            param_def_item["default_type"],
-                            target_param_def,
-                            ts_to_map,
-                        )
-                        for (
-                            target_parameter_name,
-                            target_value,
-                        ) in target_param_value.items():
-                            if (
-                                not type_ == float
-                                and api.from_database(target_value, type_) != 0
-                            ):  # Ignore if the default value is zero (this could be made optional if needed)
-                                assert_success(target_db.add_parameter_value_item(
-                                    check=True,
-                                    entity_class_name=target_entity_class,
-                                    parameter_definition_name=target_parameter_name,
-                                    entity_byname=entity_byname_tuple,
-                                    alternative_name=default_alternative,
-                                    value=target_value,
-                                    type=type_,
-                                ))
+
+    try:
+        target_db.commit_session("Added parameters")
+    except NothingToCommit:
+        pass
+    except DBAPIError:
+        print("failed to commit parameters")
 
     return target_db
 
@@ -346,21 +303,20 @@ def transform_parameters_entity_from_parameter(
                                     parameter_definition_name=source_param,
                                 )
                     for entity in source_entities:
-                        #get the new entity name
+                        # get the new entity name
                         for entity_parameter in entity_parameters:
                             if entity_parameter["entity_name"] == entity["name"]:
                                 target_entity_name = api.from_database(entity_parameter["value"],entity_parameter["type"])
-                        #transform parameters
+                        # transform parameters
                         for parameter in parameters:
                             if parameter["entity_name"] == entity["name"]:
                                 (
                                     target_param_value,
                                     type_,
-                                    entity_byname_tuple,
+                                    entity_byname_tuples
                                 ) = process_parameter_transforms(
                                     parameter["entity_byname"],
                                     parameter["value"],
-                                    parameter["type"],
                                     target_param_def,
                                     ts_to_map,
                                     source_db=source_db,
@@ -402,7 +358,8 @@ def process_parameter_transforms(
     target_multiplier = None
     operand_value = None
     target_param_dict = {}
-    list_of_elements = [None]
+    for_each_entities = []
+    entity_byname_tuples = []
     # Interpret the target param dict definition
     if isinstance(target_param_def, dict):  # If target_param_def contains a dict, break it up and copy content of "target" to target_param_def (it's now a string or a list)
         target_param_dict = target_param_def
@@ -434,12 +391,10 @@ def process_parameter_transforms(
                     raise ValueError("Multiplied/added/subtracted/divided operand must be a float. " + source_entity_class + " " +
                          target_param_dict.get("with"))
         if target_param_dict.get("for_each"):
-            list_of_elements = []
             for entity in source_db.get_entity_items(
-                entity_class_name = target_param_dict.get("for_each"),
-                alternative_name = alternative_name
+                entity_class_name = target_param_dict.get("for_each")[0],
             ):
-                list_of_elements.append(entity["entity_byname"])
+                for_each_entities.append(entity["entity_byname"])
     # Do the manipulations
     if isinstance(target_param_def, list):
         target_param = target_param_def[0]
@@ -456,7 +411,9 @@ def process_parameter_transforms(
     if data is None:
         raise ValueError(
             "Data without value for parameter "
-            + target_param_def[0]
+            + target_param_def[0] + " of entity "
+            + str(entity_byname_orig) + " and entity_class "
+            + str(source_entity_class)
             + ". Could be parameter default value set to none."
         )
 
@@ -510,12 +467,32 @@ def process_parameter_transforms(
                 )
             entity_byname_list.append("__".join(entity_bynames))
         entity_byname_tuple = tuple(entity_byname_list)
-    if target_param_dict.get("for_each"):
-        list_of_entity_byname_tuples = []
-        for element in list_of_elements:
-            list_of_entity_byname_tuples.append(entity_byname_tuple)
 
-    return target_param_value, type_, entity_byname_tuple
+    if for_each_entities:
+        for for_each_entity in for_each_entities:
+            new_byname = list(entity_byname_tuple)
+            for for_each_source_class_dimension in target_param_dict.get("for_each")[1:]:
+                for (j, target_entity_dimension) in enumerate(for_each_source_class_dimension):
+                    added = 0
+                    if j < len(new_byname):
+                        parts = new_byname[j].split("__")
+                    else:
+                        parts = []
+                    for (k, for_each_position) in enumerate(target_entity_dimension):
+                        parts.insert(int(for_each_position) - 1 + added, for_each_entity[k])
+                        # As the string has new positions added, the target position can go off, so trying to compensate:
+                        if int(for_each_position) - 1 <= k:
+                            added = added + 1
+                    if j < len(new_byname):
+                        new_byname[j] = "__".join(parts)
+                    else:
+                        new_byname.append("__".join(parts))
+            entity_byname_tuples.append(tuple(new_byname))
+
+    else:
+        entity_byname_tuples = [entity_byname_tuple]
+
+    return target_param_value, type_, entity_byname_tuples
 
 
 def apply_operation(data, operand_value, target_param_dict):
