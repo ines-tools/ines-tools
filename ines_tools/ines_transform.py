@@ -3,7 +3,6 @@ from spinedb_api import DatabaseMapping, TimeSeries
 from sqlalchemy.exc import DBAPIError
 from spinedb_api.exception import NothingToCommit
 import typing
-from sys import exit
 
 # from ines_tools.tool_specific.mathprog.read_mathprog_model_data import alternative_name
 #  from ines_tools.tool_specific.mathprog.write_mathprog_model_data import entity_byname
@@ -155,7 +154,7 @@ def copy_entities(
         print("Warning! No entities to be added")
     except DBAPIError as e:
         print(e)
-        exit("failed to commit entities and entity_alternatives")
+        raise ValueError("failed to commit entities and entity_alternatives")
     return target_db
 
 
@@ -249,6 +248,8 @@ def transform_parameters_use_default(
                             parameter["type"],
                             target_param_def,
                             ts_to_map,
+                            source_db = source_db,
+                            source_entity_class = source_entity_class
                         )
                         for (
                             target_parameter_name,
@@ -294,6 +295,7 @@ def transform_parameters_use_default(
                                 ))
 
     return target_db
+
 
 def transform_parameters_entity_from_parameter(
     source_db: DatabaseMapping,
@@ -361,6 +363,8 @@ def transform_parameters_entity_from_parameter(
                                     parameter["type"],
                                     target_param_def,
                                     ts_to_map,
+                                    source_db=source_db,
+                                    source_entity_class=source_entity_class
                                 )
                                 for (
                                     target_parameter_name,
@@ -403,13 +407,13 @@ def process_parameter_transforms(
     if isinstance(target_param_def, dict):  # If target_param_def contains a dict, break it up and copy content of "target" to target_param_def (it's now a string or a list)
         target_param_dict = target_param_def
         if not target_param_dict.get("target"):
-            exit("When using dict in target_param_def, one needs to have a 'target' defined")
+            raise ValueError("When using dict in target_param_def, one needs to have a 'target' defined")
         target_param_def = target_param_dict.get("target")
         if target_param_dict.get("operation"):
             if source_db is None or source_entity_class is None:
-                exit("source_db and source_entity_class required for arithmetic operations")
+                raise ValueError("source_db and source_entity_class required for arithmetic operations")
             if not target_param_dict.get("with"):
-                exit("When dict has 'operation', it also needs 'with' in target_param_def")
+                raise ValueError("When dict has 'operation', it also needs 'with' in target_param_def")
             else:
                 if is_numeric(target_param_dict.get("with")):
                     operand_value = float(target_param_dict.get("with"))
@@ -423,11 +427,11 @@ def process_parameter_transforms(
                         )
                         operand_value = api.from_database(operand["value"], operand["type"])
                     except:
-                        exit("Could not get a parameter value for an operand in " + source_entity_class + " " + target_param_dict.get("with"))
+                        raise ValueError("Could not get a parameter value for an operand in " + source_entity_class + " " + target_param_dict.get("with"))
                 else:
-                    exit("In target_param_def dict, with must be a float or a string (parameter name)")
+                    raise ValueError("In target_param_def dict, with must be a float or a string (parameter name)")
                 if not isinstance(operand_value, float):
-                    exit("Multiplied/added/subtracted/divided operand must be a float. " + source_entity_class + " " +
+                    raise ValueError("Multiplied/added/subtracted/divided operand must be a float. " + source_entity_class + " " +
                          target_param_dict.get("with"))
         if target_param_dict.get("for_each"):
             list_of_elements = []
@@ -450,7 +454,7 @@ def process_parameter_transforms(
 
     data = api.from_database(p_value, p_type)
     if data is None:
-        exit(
+        raise ValueError(
             "Data without value for parameter "
             + target_param_def[0]
             + ". Could be parameter default value set to none."
@@ -530,7 +534,7 @@ def apply_operation(data, operand_value, target_param_dict):
         data.values = [op(float(i), operand_value) for i in data.values]
         return data
 
-    exit("Unmanaged data type in processing: " + data)
+    raise TypeError("Unmanaged data type in processing: " + data)
 
 
 
@@ -663,7 +667,7 @@ def copy_entities_to_parameters(source_db, target_db, entity_to_parameters):
                                     alternative_name=ea["alternative_name"],
                                 ))
                             else:
-                                exit(
+                                raise ValueError(
                                     "Inappropriate choice in entities_to_parameters.yaml definition file: "
                                     + entity["name"]
                                 )
@@ -736,12 +740,10 @@ def transform_parameters_to_relationship_entities(source_db: DatabaseMapping, ta
             for parameter_target_entity_class_name, source_parameter in parameter_target_entity_class.items():
                 for source_parameter_name, info in source_parameter.items():
                     if 'position' not in info.keys():
-                        print("'position' is required for " + source_entity_class+", " + source_parameter_name)
-                        exit(-1)
+                        raise ValueError("'position' is required for " + source_entity_class+", " + source_parameter_name)
                     if isinstance(info['position'],tuple): # if more than two members in the relationship
                         if not(isinstance(source_parameter_name,tuple) and isinstance(parameter_target_entity_class_name,tuple)):
-                            print("Either the parameter_target_entity_class, source_parameter and position are all tuples or none of them are")
-                            exit(-1)
+                            raise ValueError("Either the parameter_target_entity_class, source_parameter and position are all tuples or none of them are")
                         parameter_values = list()
                         for param_name in source_parameter_name:
                             parameter_values.extend(source_db.get_parameter_value_items(
@@ -789,10 +791,9 @@ def transform_parameters_to_relationship_entities(source_db: DatabaseMapping, ta
                                 target_class = parameter_target_entity_class_name + "__" +  target_entity_class_name
                                 target_entity_byname = (parameter_value, entity["name"])
                             else:
-                                print("Inappropriate choice for relationship position: "
+                                raise ValueError("Inappropriate choice for relationship position: "
                                     + str(info['position']) + " for " + source_entity_class+", " + source_parameter_name
                                     + " choose from 1 or 2 ")
-                                exit(-1)
                         assert_success(target_db.add_entity_item(
                             entity_class_name=target_class,
                             entity_byname=target_entity_byname
@@ -870,9 +871,9 @@ def add_item_to_DB(db, param_name, alt_ent_class, value, value_type=None):
 def copy_parameter(db, param_object, class_name=False, param_name=False, entity_byname=False, alt_name=False, column_name=False):
     if column_name:
         if not isinstance(column_name, list):
-            exit("copy parameter function: column name argument is not a list")
+            raise ValueError("copy parameter function: column name argument is not a list")
         if len(column_name) > 2:
-            exit("copy parameter function: not handling map dimensions beyond one")
+            raise ValueError("copy parameter function: not handling map dimensions beyond one")
         p_value = api.from_database(param_object["value"], param_object["type"])
         p_value.index_name = column_name[0]
         p_map, p_type = api.to_database(p_value)
