@@ -202,7 +202,7 @@ def transform_parameters(
                 # Process each parameter
                 for param in params:
                     # Process parameter transformation
-                    target_param_value, type_, entity_byname_tuples = process_parameter_transforms(
+                    result = process_parameter_transforms(
                         param["entity_byname"],
                         param["value"],
                         param["type"],
@@ -210,7 +210,13 @@ def transform_parameters(
                         ts_to_map,
                         source_db=source_db,
                         source_entity_class=source_entity_class,
-                    )
+                        alternative_name=param["alternative_name"]
+                        )
+                    if result is False:
+                        print(f"Could not get operand parameter for class {source_entity_class} parameter "
+                              f"{source_param} entity {param['entity_name']}")
+                        continue
+                    target_param_value, type_, entity_byname_tuples = result
 
                     # Skip default zero values
                     if use_default and type_ != float and api.from_database(param["value"], type_) == 0:
@@ -230,10 +236,16 @@ def transform_parameters(
                         for entity_byname_tuple in entity_byname_tuples:
                             # Adding entities if for_each is in use
                             if len(entity_byname_tuples) > 1:
-                                assert_success(target_db.add_entity_item(
-                                    entity_class_name=target_entity_class,
-                                    entity_byname=entity_byname_tuple,
-                                ))
+                                try:
+                                    assert_success(target_db.add_update_item(
+                                        item_type="entity",
+                                        entity_class_name=target_entity_class,
+                                        entity_byname=entity_byname_tuple,
+                                    ))
+                                except:
+                                    print(f"Could not find entities from {entity_byname_tuple} in class "
+                                          f"{target_entity_class}. Skipping adding a parameter for this entity.")
+                                    continue
                             assert_success(target_db.add_parameter_value_item(
                                 check=True,
                                 entity_class_name=target_entity_class,
@@ -244,12 +256,12 @@ def transform_parameters(
                                 type=type_,
                             ))
 
-    try:
-        target_db.commit_session("Added parameters")
-    except NothingToCommit:
-        pass
-    except DBAPIError:
-        print("failed to commit parameters")
+        try:
+            target_db.commit_session("Added parameters")
+        except NothingToCommit:
+            pass
+        except DBAPIError:
+            print("failed to commit parameters")
 
     return target_db
 
@@ -372,24 +384,34 @@ def process_parameter_transforms(
             if not target_param_dict.get("with"):
                 raise ValueError("When dict has 'operation', it also needs 'with' in target_param_def")
             else:
-                if is_numeric(target_param_dict.get("with")):
-                    operand_value = float(target_param_dict.get("with"))
-                elif isinstance(target_param_dict.get("with"), str):
+                param_with = target_param_dict.get("with")
+                if isinstance(param_with, list):
+                    if len(param_with) != 2:
+                        raise ValueError(
+                            f"With definition must have exactly two components in {source_entity_class}, got: {param_with}")
+                    source_entity_class, param_with = param_with
+                if is_numeric(param_with):
+                    operand_value = float(param_with)
+                elif isinstance(param_with, str):
                     try:
                         operand = source_db.get_parameter_value_item(
                             entity_class_name=source_entity_class,  # Adjust based on your structure
-                            parameter_definition_name=target_param_dict.get("with"),
+                            parameter_definition_name=param_with,
                             entity_byname=entity_byname_orig,
                             alternative_name=alternative_name
                         )
+                        if not operand:
+                            return False
                         operand_value = api.from_database(operand["value"], operand["type"])
-                    except:
-                        raise ValueError("Could not get a parameter value for an operand in " + source_entity_class + " " + target_param_dict.get("with"))
+                    except Exception as e:
+                        raise ValueError(f"Failed in trying to get a parameter value for an operand in "
+                                         f"{source_entity_class} {target_param_dict.get('with')}. "
+                                         f"Error: {str(e)}"
+                                         )
                 else:
                     raise ValueError("In target_param_def dict, with must be a float or a string (parameter name)")
                 if not isinstance(operand_value, float):
-                    raise ValueError("Multiplied/added/subtracted/divided operand must be a float. " + source_entity_class + " " +
-                         target_param_dict.get("with"))
+                    raise ValueError(f"Multiplied/added/subtracted/divided operand must be a float. {source_entity_class} {target_param_dict.get('with')}")
         if target_param_dict.get("for_each"):
             for entity in source_db.get_entity_items(
                 entity_class_name = target_param_dict.get("for_each")[0],
