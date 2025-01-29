@@ -33,6 +33,10 @@ def is_numeric(string):
         return False
 
 
+def is_boolean_string(s):
+    return str(s).lower() in {'true', 'false'}
+
+
 def copy_entities(
     source_db: DatabaseMapping, target_db: DatabaseMapping, copy_entities: typing.Dict
 ) -> DatabaseMapping:
@@ -539,9 +543,9 @@ def apply_operation(data, operand_value, target_param_dict):
 
 def process_methods(source_db, target_db, parameter_methods):
     for source_entity_class, sec_values in parameter_methods.items():
+        source_entities = source_db.get_entity_items(entity_class_name=source_entity_class)
         for target_entity_class, tec_values in sec_values.items():
             for source_feature, f_values in tec_values.items():
-                source_entities = source_db.get_entity_items(entity_class_name=source_entity_class)
                 parameter_values = source_db.get_parameter_value_items(
                                     parameter_definition_name=source_feature,
                                     entity_class_name= source_entity_class)
@@ -587,10 +591,12 @@ def process_parameter_methods(source_entity, parameter, f_values):
                 if isinstance(target_method_def, list):
                     target_method = target_method_def[0]
                     data, type_ = api.to_database(target_method)
-                    target.update({target_feature: data})
+                elif is_boolean_string(target_method_def):
+                    data, type_ = api.to_database(bool(target_method_def))
                 else:
                     data, type_ = api.to_database(target_method_def)
-                    target.update({target_feature: data})
+                target.update({target_feature: data})
+
         # else:
         #    print("feature '" + source_feature_name + "' of the method '" + source_method_name + "' missing for entity: " + parameter_["entity_name"])
 
