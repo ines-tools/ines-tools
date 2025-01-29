@@ -560,7 +560,7 @@ def process_methods(source_db, target_db, parameter_methods):
                             )
                             for (
                                 target_parameter_name,
-                                target_value,
+                                [target_value, target_type],
                             ) in specific_parameters.items():
                                 #print(target_entity_class + ', ' + target_parameter_name)
                                 assert_success(target_db.add_item(
@@ -571,7 +571,7 @@ def process_methods(source_db, target_db, parameter_methods):
                                     entity_byname=entity_byname_list,
                                     alternative_name=parameter["alternative_name"],
                                     value=target_value,
-                                    type="str",
+                                    type=target_type,
                                 ))
     try:
         target_db.commit_session("Process methods")
@@ -584,18 +584,19 @@ def process_methods(source_db, target_db, parameter_methods):
 
 def process_parameter_methods(source_entity, parameter, f_values):
     target = {}
-    method_of_source_entity = api.from_database(parameter["value"], parameter["type"])
+    type_ = "str"
+    method_of_source_parameter = api.from_database(parameter["value"], parameter["type"])
     for source_method_name, target_feature_method in f_values.items():
-        if source_method_name == method_of_source_entity:
+        if source_method_name == method_of_source_parameter:
             for target_feature, target_method_def in target_feature_method.items():
                 if isinstance(target_method_def, list):
                     target_method = target_method_def[0]
                     data, type_ = api.to_database(target_method)
-                elif is_boolean_string(target_method_def):
-                    data, type_ = api.to_database(bool(target_method_def))
+                elif isinstance(target_method_def, bool):
+                    data, type_ = api.to_database(target_method_def)
                 else:
                     data, type_ = api.to_database(target_method_def)
-                target.update({target_feature: data})
+                target.update({target_feature: [data, type_]})
 
         # else:
         #    print("feature '" + source_feature_name + "' of the method '" + source_method_name + "' missing for entity: " + parameter_["entity_name"])
