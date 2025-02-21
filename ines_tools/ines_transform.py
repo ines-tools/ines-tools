@@ -332,6 +332,7 @@ def transform_parameters_entity_from_parameter(
                                 ) = process_parameter_transforms(
                                     parameter["entity_byname"],
                                     parameter["value"],
+                                    parameter["type"],
                                     target_param_def,
                                     ts_to_map,
                                     source_db=source_db,
