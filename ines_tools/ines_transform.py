@@ -81,18 +81,17 @@ def copy_entities(
                 if filter_parameter:
                     if isinstance(filter_parameter, dict):
                         param_flag = False
-                        for param_value in param_values:
-                            for target_feature, target_method in filter_parameter.items():
-                                if param_value["parameter_definition_name"] == target_feature:
-                                    if param_value["entity_name"] in entity["name"]:
-                                        if isinstance(target_method,list):
-                                                param_flag = any(
-                                                    x["parsed_value"] in target_method for x in param_values
-                                                )
-                                        if isinstance(target_method,str):
-                                            param_flag = any(
-                                                x["parsed_value"] == target_method for x in param_values
-                                            )
+                        for target_feature, target_method in filter_parameter.items():
+                                if isinstance(target_method,list):
+                                    param_flag = any(
+                                        x["parameter_definition_name"] == target_feature and
+                                        x["entity_name"] in entity["name"] and x["parsed_value"] in target_method for x in param_values
+                                    )
+                                if isinstance(target_method,str):
+                                    param_flag = any(
+                                        x["parameter_definition_name"] == target_feature and
+                                        x["entity_name"] in entity["name"] and x["parsed_value"] == target_method for x in param_values
+                                    )
                     elif isinstance(filter_parameter, str):
                         param_flag = False
                         for param_value in param_values:
