@@ -8,69 +8,23 @@ The `ines-tools` package is part of the Interoperable Energy System (INES) proje
 
 The ines-tools can be used through scripting, but they can also be integrated into Spine Toolbox workflows for data management, ease-of-use and for version control between tools.
 
+The main function to perform transformations is ines_tools/ines_transform.py. Write a script for your tool that can uses setting files (yaml) that define what to take from source database to the target database. Look at the examples from the existing repositories (ines-flextool, ines-osemosys, etc).
 
-## Features
+Transformations that can be performed through setting files:
+- copy entities
+- conditional copy of entities (existence of parameters)
+- change the order of dimensions of these entities
+- copy parameters
+- copy parameters while changing dimensions
+- perform basic math operations between two parameters
+- turn entities into parameters of other entities
 
-- **Data Transformation**: Convert data between INES-SPEC databases and other formats such as CSV, JSON, and XML.
-- **Data Validation**: Ensure data integrity and compliance with the INES Specification.
-- **Integration**: Seamlessly integrate with other energy modeling tools and platforms.
-- **Flexibility**: Support for complex parameter structures and scenario building.
+There is also a function to aggregate data using mappings of entity names between source and target. Aggregation will use weights chosen by the user.
+
 
 ## Installation
 
-To install the `ines-tools` package, use the following command:
-
-```
-pip install ines-tools
-```
-
-## Usage
-
-### Data Transformation
-
-Transform data from an INES-SPEC database to a CSV file:
-
-```
-from ines_tools import transform
-```
-
-# Transform INES-SPEC database to CSV
-```
-transform.ines_to_csv('ines_spec.sqlite', 'output.csv')
-```
-
-Transform data from a CSV file to an INES-SPEC database:
-```
-from ines_tools import transform
-```
-# Transform CSV to INES-SPEC database
-```
-transform.csv_to_ines('input.csv', 'ines_spec.sqlite')
-```
-
-### Data Validation
-
-Validate an INES-SPEC database:
-
-```
-from ines_tools import validate
-```
-# Validate INES-SPEC database
-```
-validate.ines_database('ines_spec.sqlite')
-```
-
-### Integration
-
-Integrate data from different energy modeling tools:
-
-```
-from ines_tools import integrate
-```
-# Integrate data from different tools
-```
-integrate.from_tool('tool_data.json', 'ines_spec.sqlite')
-```
+At this stage, ines-tools are meant to be cloned and used through import statements, so it should be added to the same Python environment with the code using ines-tools.
 
 ## Contributing
 
@@ -89,13 +43,11 @@ This project is licensed under the MIT License. See the LICENSE file for details
 
 ## Acknowledgements
 
-This work was funded by the MOPO European Energy System Modelling project, which aims to advance the development and integration of energy system models across Europe.
+This work was funded by the EU project Mopo, which aims to advance the development and integration of energy system models across Europe.
 
 ## Contact
 
 For questions or support, please open an issue in the repository or contact the maintainers.
-
-
 
 
 <!-- To Do: Add a more detailed explanation (with examples) to the documentation. -->
