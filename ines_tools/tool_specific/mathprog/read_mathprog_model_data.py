@@ -1,5 +1,6 @@
 import spinedb_api as api
 from spinedb_api import DatabaseMapping
+from spinedb_api.exception import NothingToCommit
 import sys
 import numpy
 import yaml
@@ -108,7 +109,10 @@ def write_param(entity_class, param, alternative_name, new_values, param_dims):
             #print("added param " + param)
             insides = [[] for _ in range(len(inside_dimen_positions) + 1)]
         entity_name = next_entity_name
-    target_db.commit_session("Values for parameter " + param + " added")
+    try:
+        target_db.commit_session("Values for parameter " + param + " added")
+    except NothingToCommit:
+        pass
 
 
 if len(sys.argv) < 2:
@@ -206,6 +210,8 @@ with DatabaseMapping(url_db) as target_db:
                     read_set_elements = False
                     set_member_names = []
                     for i, element in enumerate(elements):
+                        if element == "\n":
+                            continue
                         if element == ":=":
                             read_set_elements = True
                             continue
@@ -220,7 +226,10 @@ with DatabaseMapping(url_db) as target_db:
                                                                                     active=True
                                                                                     )
                     if added:
-                        target_db.commit_session("Added entities from class " + class_name)
+                        try:
+                            target_db.commit_session("Added entities from class " + class_name)
+                        except NothingToCommit:
+                            pass
                     continue
 
 
@@ -285,6 +294,10 @@ with DatabaseMapping(url_db) as target_db:
 
                 for i, next_word in enumerate(elements):
                     if next_word == '\n':  # Skip end of lines
+                        continue
+                    if next_word == '#':
+                        while elements[i + 1] != '\n':
+                            elements.pop(i + 1)
                         continue
                     if next_word == ';':
                         if new_values:
@@ -410,9 +423,22 @@ with DatabaseMapping(url_db) as target_db:
                                 print("Default value add_update commit failed")
                         elements.pop(i)
                         continue
-
-
-
+                    if not colon_sign and i > 1:
+                        while len(elements) > i + 1:
+                            temp = []
+                            for dimen in range(len(param_listing[param][2])):
+                                element = elements.pop(i)
+                                temp.append(element)
+                                element = elements.pop(i)
+                            temp.append(element)
+                            new_values.append(copy.copy(temp))
+                            element = elements.pop(i)
+                            value_given = True
+                        if new_values:
+                            write_param(entity_class, param, alternative_name, new_values, param_listing[param])
+                        if not value_given and is_default_value:
+                            add_all_entity_combinations_to_class.append(entity_class)
+                        break
 
                 # Keeping code to deal with 'in' in the param dimension defs - needs to be implemented
                     # if not param_dimen_start and not param_attributes_start:
@@ -440,7 +466,10 @@ with DatabaseMapping(url_db) as target_db:
                 entity_dimens.append(entity["entity_byname"][m - 1])
             target_db.add_update_entity_item(entity_class_name=to_entity_class,
                                              element_name_list=tuple(entity_dimens))
-    target_db.commit_session("Added entities from entities")
+    try:
+        target_db.commit_session("Added entities from entities")
+    except NothingToCommit:
+        pass
 
     for param_name, read_csv_filename in read_separate_csv.items():
         print(param_name)
@@ -484,7 +513,10 @@ with DatabaseMapping(url_db) as target_db:
                 print("Could not add data from csv file " + read_csv_filename)
         except FileNotFoundError:
             print("No csv data file for " + read_csv_filename)
-    target_db.commit_session("Added data from csv files")
+    try:
+        target_db.commit_session("Added data from csv files")
+    except NothingToCommit:
+        pass
 file.close()
 
 #pr.dump_stats('profile.pstat')

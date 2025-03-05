@@ -1,4 +1,5 @@
 from spinedb_api import DatabaseMapping
+from spinedb_api.exception import NothingToCommit
 import sys
 import yaml
 
@@ -162,19 +163,23 @@ for class_param_dimens in class_param_dimen_list:
 with DatabaseMapping(url_db) as target_db:
     for i, set_name in enumerate(set_names):
         if len(set_dimen_list[i]) > 1:
-            added, error = target_db.add_entity_class_item(name=set_name, dimension_name_list=set_dimen_list[i])
+            added, updated, error = target_db.add_update_entity_class_item(name=set_name, dimension_name_list=set_dimen_list[i])
         else:
-            added, error = target_db.add_entity_class_item(name=set_name)
+            added, updated, error = target_db.add_update_entity_class_item(name=set_name)
         if error:
             exit("Exiting, db not changed: " + error)
     for i, param_name in enumerate(param_names):
-        added, error = target_db.add_parameter_definition_item(name=param_name,
+        added, updated, error = target_db.add_update_parameter_definition_item(name=param_name,
                                                                entity_class_name='__'.join(class_param_dimen_list[i]),
                                                                description=' '.join(inside_param_dimen_list[i]))
         if error:
             exit("Exiting, db not changed: " + error)
 
-    target_db.commit_session("Model structure added from a Mathprog file")
+    try:
+        target_db.commit_session("Model structure added from a Mathprog file")
+    except NothingToCommit:
+        print("Warning! There was no new classes or parameters to be added (maybe existing DB)")
+
 
 file.close()
 
