@@ -1,17 +1,20 @@
 [project]
 name = "ines-tools"
 dynamic = ["version"]
+
 license = { file = "LICENSE" }
-description = "Data tools for ines-spec compatible data."
-keywords = ["workflow", "database"]
+authors = [{name = "contributors"}]
+keywords = ["workflow", "database", "energy system modelling"]
 readme = {file = "README.md", content-type = "text/markdown"}
 classifiers = [
     "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
 requires-python = ">=3.9"
 dependencies = [
     "spinedb_api>=0.32.1",
+    "pyyaml",
 ]
 
 [project.urls]
@@ -21,17 +24,17 @@ Repository = "https://github.com/energy-modelling-workbench/ines-tools"
 # spinetoolbox = "spinetoolbox.main:main"
 
 [build-system]
-requires = ["setuptools>=64", "setuptools_scm[toml]>=6.2", "wheel", "build"]
+requires = ["setuptools>=64"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools_scm]
-
-[tool.setuptools]
-zip-safe = false
-include-package-data = true
 
 [tool.setuptools.packages.find]
 exclude = [
     "examples*",
     "docs*",
 ]
+
+[tool.setuptools]
+zip-safe = false
+include-package-data = true
