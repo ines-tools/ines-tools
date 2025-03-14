@@ -88,3 +88,21 @@ def ines_aggregate_with_entity_name_deduction(db_source: DatabaseMapping,
         elif defaults != None:
             value_ = defaults if not value_ else value_+defaults
 
+
+def ines_aggregate2(db_source : DatabaseMapping,
+                    transformer_df: pd.DataFrame,
+#                    target_poly: str,
+                    entity_class: tuple,
+#                    entity_names: tuple,
+                    alternative: str,
+                    source_parameter: str,
+#                    weight: str,
+                    defaults = None) -> dict:
+
+    parameter_values = db_source.get_parameter_value_items(entity_class_name=entity_class,
+                                                           parameter_definition_name=source_parameter,
+                                                           alternative_name=alternative)
+
+    for parameter_value in parameter_values:
+        print(parameter_value["entity_name"] + " " + parameter_value["parameter_definition_name"] + " ")
+
