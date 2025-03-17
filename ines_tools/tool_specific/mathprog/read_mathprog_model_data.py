@@ -2,6 +2,7 @@ import spinedb_api as api
 from spinedb_api import DatabaseMapping
 from spinedb_api.exception import NothingToCommit
 import sys
+import os
 import numpy
 import yaml
 import copy
@@ -155,7 +156,8 @@ with DatabaseMapping(url_db) as target_db:
             if param["name"] in read_separate_csv:
                 continue
             params_name_list.append(param["name"])
-            all_params_dimen_dict_list[param["name"]] = param_listing[param["name"]][0] + param_listing[param["name"]][1]
+            if param["name"] in param_listing.keys():
+                all_params_dimen_dict_list[param["name"]] = param_listing[param["name"]][0] + param_listing[param["name"]][1]
         class__param[entity_class["name"]] = params_name_list
         class__param__all_dimens[entity_class["name"]] = all_params_dimen_dict_list
         dimens_name_list = []
@@ -362,6 +364,8 @@ with DatabaseMapping(url_db) as target_db:
                                 data_headers[0].append(settings["class_for_scalars"])
                                 data_counter[0] = 0
                         next_column_header_element = elements.pop(i+1)
+                        while next_column_header_element == '\n':
+                            next_column_header_element = elements.pop(i+1)
                         while next_column_header_element != ':=' and next_column_header_element != '\n':
                             data_header_found = False
                             tabbed_dim_loc = len(current_parameter_dimens) - 1
@@ -470,16 +474,29 @@ with DatabaseMapping(url_db) as target_db:
         target_db.commit_session("Added entities from entities")
     except NothingToCommit:
         pass
-
+    
+    if len(sys.argv) < 3 and read_separate_csv:
+        print("if settings provide 'read_separate_csv', the filepath to it should be provided by as the third argument")
+        exit(-1)
+    
     for param_name, read_csv_filename in read_separate_csv.items():
         print(param_name)
+        
+        path_to_csv = None
+        for arg_file in sys.argv[3:]:
+            if os.path.basename(arg_file) == read_csv_filename:
+                path_to_csv = arg_file
+        if not path_to_csv:
+            print("The file provided as the settings csv 'read_separate_csv' does not match with any of the input arguments")
+            exit(-1)
+
         added, error = target_db.add_parameter_definition_item(entity_class_name=class_for_scalars,
                                                                name=param_name
                                                                )
         if error:
             print("Could not add parameter definition for csv data: " + error)
         try:
-            with open(read_csv_filename) as csv_file:
+            with open(path_to_csv) as csv_file:
                 csv_reader = csv.reader(csv_file, delimiter=',')
                 csv_header = []
                 csv_data = []
@@ -510,9 +527,9 @@ with DatabaseMapping(url_db) as target_db:
                                                               value=p_value
                                                               )
             if error:
-                print("Could not add data from csv file " + read_csv_filename)
+                print("Could not add data from csv file " + path_to_csv)
         except FileNotFoundError:
-            print("No csv data file for " + read_csv_filename)
+            print("No csv data file for " + path_to_csv)
     try:
         target_db.commit_session("Added data from csv files")
     except NothingToCommit:
