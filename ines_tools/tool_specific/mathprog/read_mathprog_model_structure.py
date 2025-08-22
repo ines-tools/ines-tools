@@ -4,7 +4,7 @@ import sys
 import yaml
 from pathlib import Path
 
-def read_mathprog_structure(settings, url_db, file_path, write_to_db=True):
+def read_mathprog_structure(settings, url_db, file_path, param_dimens_file, write_to_db=True):
 
     file = open(file_path, 'r')
     dimens_to_param = settings["dimens_to_param"]
@@ -178,7 +178,7 @@ def read_mathprog_structure(settings, url_db, file_path, write_to_db=True):
     for i in range(len(class_param_dimen_list)):
         param_listing[param_names[i]] = [class_param_dimen_list[i], inside_param_dimen_list[i]] + [orig_dimen_order_list[i]]
 
-    with open('param_dimens.yaml', 'w+') as yaml_file:
+    with open(param_dimens_file, 'w+') as yaml_file:
         yaml.safe_dump(param_listing, yaml_file)
 
     file.close()
@@ -191,7 +191,7 @@ if __name__ == "__main__":
         settings = yaml.safe_load(yaml_file)
     url_db = settings["target_db"]
     file_name = settings["model_code"]
-
+    param_dimens_file='param_dimens.yaml'
     if len(sys.argv) > 2:
         url_db = sys.argv[2]
-    read_mathprog_structure(settings, url_db, file_name)
+    read_mathprog_structure(settings, url_db, file_name, param_dimens_file)

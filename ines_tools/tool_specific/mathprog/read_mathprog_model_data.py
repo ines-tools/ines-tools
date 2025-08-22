@@ -100,7 +100,7 @@ def write_param(target_db, entity_class, param, alternative_name, new_values, pa
     except NothingToCommit:
         pass
 
-def read_mathprog_data(settings, url_db, file_name):
+def read_mathprog_data(settings, url_db, file_name, param_dimens_file):
 
     dimens_to_param = settings["dimens_to_param"]
     class_for_scalars = settings["class_for_scalars"]
@@ -109,7 +109,7 @@ def read_mathprog_data(settings, url_db, file_name):
     purge = settings["purge"]
     #read_separate_csv = settings["read_separate_csv"]
     file = open(file_name, 'r')
-    with open('param_dimens.yaml', 'r') as yaml_file:
+    with open(param_dimens_file, 'r') as yaml_file:
         param_listing = yaml.safe_load(yaml_file)
 
     with DatabaseMapping(url_db) as target_db:
@@ -464,4 +464,5 @@ if __name__ == "__main__":
         url_db = sys.argv[2]
     if len(sys.argv) > 3:
         file_name = sys.argv[3]
-    read_mathprog_data(settings, url_db, file_name)
+    param_dimens_file='param_dimens.yaml'
+    read_mathprog_data(settings, url_db, file_name, param_dimens_file)
