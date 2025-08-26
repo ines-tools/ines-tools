@@ -112,13 +112,15 @@ def read_mathprog_data(settings, url_db, file_name, param_dimens_file):
     with open(param_dimens_file, 'r') as yaml_file:
         param_listing = yaml.safe_load(yaml_file)
 
-    with DatabaseMapping(url_db) as target_db:
-
-        if purge:
+    if purge:
+        with DatabaseMapping(url_db) as target_db:
             target_db.purge_items('entity')
-            target_db.commit_session("Purged entities")
             target_db.purge_items('alternative')
-            target_db.commit_session("Purged alternatives")
+            try:
+                target_db.commit_session("Purged database")
+            except NothingToCommit:
+                pass
+    with DatabaseMapping(url_db) as target_db:
         target_db.add_alternative_item(name=alternative_name)
         target_db.add_scenario_item(name=alternative_name)
         target_db.add_scenario_alternative_item(alternative_name=alternative_name, scenario_name=alternative_name, rank=0)
