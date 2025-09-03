@@ -1,9 +1,17 @@
 model_code:
   model.mod  # OSeMOSYS model file (written in MathProg)
-model_data:
-  model.dat  # OSeMOSYS data file (Mathprog format)
+new_model_name:
+  new_model.dat  # OSeMOSYS model file (written in MathProg) - this is the name of the new model to be created  
 target_db:
   sqlite:///OSeMOSYS.sqlite  # Spine Toolbox sqlite file. Can be otherwise empty or it can contain OSeMOSYS classes and parameter definitions (they are created if they don't exist).
+solution_file:
+  glp_solution.txt  # OSeMOSYS solution file - this is the name of the solution file to be created
+alternative_name:
+  base
+purge:
+  true  # Purge the database before writing new data, if false, change the alternative name between runs
+
+##You do not need to change anything below this line unless you know what you are doing
 dimens_to_param:
   - SEASON
   - DAYTYPE
@@ -13,12 +21,8 @@ dimens_to_param:
   - YEAR
 class_for_scalars:
   model
-alternative_name:
-  base
 entities_from_entities:
   - REGION__FUEL: 
       REGION__TECHNOLOGY__FUEL: [1, 3]
   - REGION__STORAGE: 
       REGION__TECHNOLOGY__STORAGE: [1, 3]
-read_separate_csv:
-  timeslices_to_time: timeslices_to_time.csv  # Format: datetime,timeslice,duration  (datetime follows 2000-01-01T00:00:00, timeslice as written and duration in hours (float) - use header row, no quotation marks)
