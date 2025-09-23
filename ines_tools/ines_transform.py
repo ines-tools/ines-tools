@@ -649,7 +649,7 @@ def copy_entities_to_parameters(source_db, target_db, entity_to_parameters):
                             entity_byname_tuple = tuple(entity_byname_list)
 
                             if target_parameter_def[0] == "entity_name":
-                                if target_parameter_def[0] == "array":
+                                if target_parameter_def[1] == "array":
                                     value_in_chosen_type = api.Array([entity["name"]])
                                 else:
                                     value_in_chosen_type = entity["name"]
@@ -855,6 +855,39 @@ def get_parameter_from_DB(db, param_name, alt_ent_class):
     else:
         return None
 
+def get_parameter_values_with_default(source_db, source_entity_class, source_param, alternative_name = None, use_default = True, ignore_default_value_of = None):
+    entities = source_db.get_entity_items(entity_class_name=source_entity_class) if use_default else None
+    param_def_item = source_db.get_parameter_definition_item(
+                        entity_class_name=source_entity_class, name=source_param
+                        ) if use_default else None
+
+    # Get all parameter values at once
+    if alternative_name:
+        params = source_db.get_parameter_value_items(
+            entity_class_name=source_entity_class,
+            parameter_definition_name=source_param,
+            alternative_name=alternative_name
+        )
+    else:
+        params = source_db.get_parameter_value_items(
+            entity_class_name=source_entity_class,
+            parameter_definition_name=source_param,
+        )
+
+    if use_default:
+        if ignore_default_value_of != api.from_database(param_def_item["default_value"], param_def_item["default_type"]):
+            entities_with_params = {tuple(p["entity_byname"]) for p in params}
+            for entity in entities:
+                if tuple(entity["entity_byname"]) not in entities_with_params:
+                    if not alternative_name:
+                        alternative_name = "default"
+                    params.append({
+                        "entity_byname": entity["entity_byname"],
+                        "value": param_def_item["default_value"],
+                        "type": param_def_item["default_type"],
+                        "alternative_name": alternative_name
+                    })
+    return params
 
 def add_item_to_DB(db, param_name, alt_ent_class, value, value_type=None):
     if value_type:
