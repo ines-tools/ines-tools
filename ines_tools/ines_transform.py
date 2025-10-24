@@ -260,8 +260,9 @@ def transform_parameters(
                                         entity_byname=entity_byname_tuple,
                                     ))
                                 except:
-                                    print(f"Could not find entities from {entity_byname_tuple} in class "
-                                          f"{target_entity_class}. Skipping adding a parameter for this entity.")
+                                    if not target_param_def.get("suppress_warnings", False):
+                                        print(f"Could not find entities from {entity_byname_tuple} in class "
+                                            f"{target_entity_class}. Skipping adding a parameter for this entity.")
                                     continue
                             assert_success(target_db.add_parameter_value_item(
                                 check=True,
@@ -494,7 +495,12 @@ def process_parameter_transforms(
             )
             # data = api.convert_containers_to_maps(data)
     value, type_ = api.to_database(data)
-    target_param_value = {target_param: value}
+    if isinstance(target_param, list):
+        target_param_value = {}
+        for tp in target_param:
+            target_param_value[tp] = value
+    else:
+        target_param_value = {target_param: value}
 
     if (
         isinstance(target_param_def, str) or len(target_param_def) < 3
