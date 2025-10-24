@@ -77,7 +77,6 @@ def copy_entities(
                         parameter_definition_name=filter_parameter,
                     )
             for entity in entities:
-                print(entity["name"])
                 if filter_parameter:
                     if isinstance(filter_parameter, dict):
                         param_flag = False
@@ -201,9 +200,24 @@ def transform_parameters(
                                 "type": param_def_item["default_type"],
                                 "alternative_name": default_alternative
                             })
-
                 # Process each parameter
                 for param in params:
+                    #check that parameters exists 
+                    if isinstance(target_param_def,dict):
+                        exists_information = target_param_def.get("ifexists", None)
+                        if exists_information:
+                            exists = True
+                            for parameter_name, value in exists_information.items():
+                                exist_params = source_db.get_parameter_value_items(
+                                    entity_class_name = source_entity_class,
+                                    parameter_definition_name = parameter_name,
+                                    entity_byname = param["entity_byname"]
+                                )
+                                if not any(api.from_database(exist_param["value"], exist_param["type"]) == value for exist_param in exist_params):
+                                    exists = False
+                            if not exists:
+                                continue
+
                     # Process parameter transformation
                     result = process_parameter_transforms(
                         param["entity_byname"],
@@ -447,7 +461,10 @@ def process_parameter_transforms(
         operation = target_param_dict.get("operation")
         if operation not in operations:
             raise ValueError(f"Invalid operation: {operation}. Must be one of: {list(operations.keys())}")
-        data = apply_operation(data, operand_value, target_param_dict)
+        if operation == "divide" and not operand_value < 0 and not operand_value > 0:
+            print(f'WARNING: Skipping operation for {entity_byname_orig},{target_param_def} to avoid dividing by zero')
+        else:
+            data = apply_operation(data, operand_value, target_param_dict)
 
     if target_multiplier is not None:
         if isinstance(data, float):
@@ -789,7 +806,6 @@ def transform_parameters_to_relationship_entities(source_db: DatabaseMapping, ta
                             for parameter in parameter_values:
                                 if parameter["entity_name"] == entity["name"]:
                                     parameter_value = api.from_database(parameter["value"], parameter["type"])
-                            print(entity['name'] + "_param_target")
                             if info['position'] == 2:
                                 target_class = target_entity_class_name + "__" + parameter_target_entity_class_name
                                 target_entity_byname = (entity["name"], parameter_value)
@@ -804,7 +820,6 @@ def transform_parameters_to_relationship_entities(source_db: DatabaseMapping, ta
                             entity_class_name=target_class,
                             entity_byname=target_entity_byname
                         ), warn=True)
-                        print(entity['name'] + "_rel")
                         #add additional parameters to the relationship created
                         if 'parameters' in info.keys():
                             for additional_source_parameter_name, target_parameter_name in info['parameters'].items():
@@ -832,7 +847,6 @@ def transform_parameters_to_relationship_entities(source_db: DatabaseMapping, ta
                                                 value=target_value,
                                                 type=type_,
                                             ))
-                                        print(entity['name'] + "_param_val")
 
     try:
         target_db.commit_session("Added relationships from parameters")
