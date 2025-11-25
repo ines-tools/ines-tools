@@ -59,7 +59,7 @@ def copy_entities(
                     pass  # Based on the previous check, there should be only one dict
                 if isinstance(target_def[-1], dict) or isinstance(target_def[-1], str):
                     filter_parameter = target_def.pop(-1)
-            entities = source_db.get_entity_items(entity_class_name=source_class)
+            entities = source_db.find_entities(entity_class_name=source_class)
             ea_items = source_db.get_entity_alternative_items(entity_class_name=source_class)
             error = None
             error_ea = None
@@ -200,24 +200,41 @@ def transform_parameters(
                                 "type": param_def_item["default_type"],
                                 "alternative_name": default_alternative
                             })
-                # Process each parameter
-                for param in params:
-                    #check that parameters exists 
-                    if isinstance(target_param_def,dict):
-                        exists_information = target_param_def.get("ifexists", None)
-                        if exists_information:
-                            exists = True
+
+                #check that parameters exists 
+                new_params = []
+                if isinstance(target_param_def,dict):
+                    exists_information = target_param_def.get("if_exists", None)
+                    if isinstance(exists_information,dict):
+                        print("Checking existence conditions for parameter: " + source_param)
+                        for param in params:
+                            exists = False
                             for parameter_name, value in exists_information.items():
                                 exist_params = source_db.get_parameter_value_items(
                                     entity_class_name = source_entity_class,
                                     parameter_definition_name = parameter_name,
-                                    entity_byname = param["entity_byname"]
                                 )
-                                if not any(api.from_database(exist_param["value"], exist_param["type"]) == value for exist_param in exist_params):
-                                    exists = False
-                            if not exists:
-                                continue
-
+                                if any(api.from_database(exist_param["value"], exist_param["type"]) == value 
+                                    and exist_param["entity_byname"] == param["entity_byname"] 
+                                    for exist_param in exist_params):
+                                    exists = True
+                            if exists:
+                                new_params.append(param)
+                    elif isinstance(exists_information,str):
+                        print("Checking existence conditions for parameter: " + source_param)
+                        exist_params = source_db.get_parameter_value_items(
+                            entity_class_name = source_entity_class,
+                            parameter_definition_name = exists_information,
+                            )
+                        for exist_param in exist_params:
+                            print(exist_param["entity_byname"])
+                        for param in params:
+                            print(param["entity_byname"])
+                            if any(exist_param["entity_byname"] == param["entity_byname"] for exist_param in exist_params):
+                                new_params.append(param)
+                params = new_params if new_params else params
+                # Process each parameter
+                for param in params:
                     # Process parameter transformation
                     result = process_parameter_transforms(
                         param["entity_byname"],
@@ -389,7 +406,6 @@ def process_parameter_transforms(
     target_multiplier = None
     operand_value = None
     target_param_dict = {}
-    for_each_entities = []
     entity_byname_tuples = []
     # Interpret the target param dict definition
     if isinstance(target_param_def, dict):  # If target_param_def contains a dict, break it up and copy content of "target" to target_param_def (it's now a string or a list)
@@ -431,11 +447,6 @@ def process_parameter_transforms(
                     raise ValueError("In target_param_def dict, with must be a float or a string (parameter name)")
                 if not isinstance(operand_value, float):
                     raise ValueError(f"Multiplied/added/subtracted/divided operand must be a float. {source_entity_class} {target_param_dict.get('with')}")
-        if target_param_dict.get("for_each"):
-            for entity in source_db.get_entity_items(
-                entity_class_name = target_param_dict.get("for_each")[0],
-            ):
-                for_each_entities.append(entity["entity_byname"])
     # Do the manipulations
     if isinstance(target_param_def, list):
         target_param = target_param_def[0]
@@ -517,7 +528,20 @@ def process_parameter_transforms(
             entity_byname_list.append("__".join(entity_bynames))
         entity_byname_tuple = tuple(entity_byname_list)
 
+    entity_byname_tuples = apply_for_each_entity_byname(entity_byname_tuple, target_param_dict, source_db)
+    
+    return target_param_value, type_, entity_byname_tuples
+
+def apply_for_each_entity_byname(entity_byname_tuple, target_param_dict, source_db):
+    
+    for_each_entities = []
+    if target_param_dict.get("for_each"):
+        for entity in source_db.get_entity_items(
+            entity_class_name = target_param_dict.get("for_each")[0],
+        ):
+            for_each_entities.append(entity["entity_byname"])
     if for_each_entities:
+        entity_byname_tuples = []
         for for_each_entity in for_each_entities:
             new_byname = list(entity_byname_tuple)
             for for_each_source_class_dimension in target_param_dict.get("for_each")[1:]:
@@ -541,8 +565,7 @@ def process_parameter_transforms(
     else:
         entity_byname_tuples = [entity_byname_tuple]
 
-    return target_param_value, type_, entity_byname_tuples
-
+    return entity_byname_tuples
 
 def apply_operation(data, operand_value, target_param_dict):
     op = operations.get(target_param_dict.get("operation"))
@@ -648,14 +671,17 @@ def copy_entities_to_parameters(source_db, target_db, entity_to_parameters):
             for target_parameter_name, target_parameter_def in target_parameter.items():
                 for entity in source_db.get_items(
                     "entity", entity_class_name=source_entity_class
-                ):
+                ):  
                     for k, source_class_element in enumerate(
                         source_entity_class.split("__")
                     ):
                         for ea in source_db.get_entity_alternative_items(
                             entity_class_name=source_class_element,
                             entity_name=entity["entity_byname"][k],
-                        ):
+                        ):  
+                            if isinstance(target_parameter_def, dict):
+                                target_parameter_def_orig = target_parameter_def
+                                target_parameter_def = target_parameter_def.get("target")
                             entity_byname_list = []
                             for target_positions in target_parameter_def[2]:
                                 entity_bynames = []
@@ -670,36 +696,43 @@ def copy_entities_to_parameters(source_db, target_db, entity_to_parameters):
                                         entity_bynames.append(entity["name"])
                                 entity_byname_list.append("__".join(entity_bynames))
                             entity_byname_tuple = tuple(entity_byname_list)
-
-                            if target_parameter_def[0] == "entity_name":
-                                if target_parameter_def[1] == "array":
-                                    value_in_chosen_type = api.Array([entity["name"]])
+                            entity_byname_tuples = apply_for_each_entity_byname(entity_byname_tuple, target_parameter_def_orig, source_db)
+                            for entity_byname_tuple in entity_byname_tuples:
+                                if target_parameter_def[0] == "entity_name":
+                                    if target_parameter_def[1] == "array":
+                                        value_in_chosen_type = api.Array([entity["name"]])
+                                    else:
+                                        value_in_chosen_type = entity["name"]
+                                    val, type_ = api.to_database(value_in_chosen_type)
+                                    assert_success(target_db.add_update_parameter_value_item(
+                                        entity_class_name=target_entity_class,
+                                        parameter_definition_name=target_parameter_name,
+                                        entity_byname=entity_byname_tuple,
+                                        value=val,
+                                        type=type_,
+                                        alternative_name=ea["alternative_name"],
+                                    ))
+                                elif target_parameter_def[0] == "new_value":
+                                    val, type_ = api.to_database(target_parameter_def[1])
+                                    assert_success(target_db.add_update_parameter_value_item(
+                                        entity_class_name=target_entity_class,
+                                        parameter_definition_name=target_parameter_name,
+                                        entity_byname=entity_byname_tuple,
+                                        value=val,
+                                        type=type_,
+                                        alternative_name=ea["alternative_name"],
+                                    ))
                                 else:
-                                    value_in_chosen_type = entity["name"]
-                                val, type_ = api.to_database(value_in_chosen_type)
-                                assert_success(target_db.add_update_parameter_value_item(
-                                    entity_class_name=target_entity_class,
-                                    parameter_definition_name=target_parameter_name,
-                                    entity_byname=entity_byname_tuple,
-                                    value=val,
-                                    type=type_,
-                                    alternative_name=ea["alternative_name"],
-                                ))
-                            elif target_parameter_def[0] == "new_value":
-                                val, type_ = api.to_database(target_parameter_def[1])
-                                assert_success(target_db.add_update_parameter_value_item(
-                                    entity_class_name=target_entity_class,
-                                    parameter_definition_name=target_parameter_name,
-                                    entity_byname=entity_byname_tuple,
-                                    value=val,
-                                    type=type_,
-                                    alternative_name=ea["alternative_name"],
-                                ))
-                            else:
-                                raise ValueError(
-                                    "Inappropriate choice in entities_to_parameters.yaml definition file: "
-                                    + entity["name"]
-                                )
+                                    raise ValueError(
+                                        "Inappropriate choice in entities_to_parameters.yaml definition file: "
+                                        + entity["name"]
+                                    )
+    try:
+        target_db.commit_session("Entities to parameters")
+    except NothingToCommit:
+        pass
+    except DBAPIError as e:
+        print("failed to commit Entities to parameters")
     return target_db
 
 
@@ -928,7 +961,7 @@ def add_item_to_DB(db, param_name, alt_ent_class, value, value_type=None):
 
 
 def copy_parameter(db, param_object, class_name=False, param_name=False, entity_byname=False, alt_name=False, column_name=False):
-    if column_name:
+    if column_name and "map" in param_object["type"]:
         if not isinstance(column_name, list):
             raise ValueError("copy parameter function: column name argument is not a list")
         if len(column_name) > 2:
@@ -942,6 +975,6 @@ def copy_parameter(db, param_object, class_name=False, param_name=False, entity_
         parameter_definition_name=param_name if param_name else param_object["parameter_definition_name"],
         entity_byname=entity_byname if entity_byname else param_object["entity_byname"],
         alternative_name=alt_name if alt_name else param_object["alternative_name"],
-        value=p_map if column_name else param_object["value"],
+        value=p_map if column_name and "map" in param_object["type"] else param_object["value"],
         type=param_object["type"]
     ))
