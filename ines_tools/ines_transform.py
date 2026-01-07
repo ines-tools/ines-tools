@@ -682,6 +682,8 @@ def copy_entities_to_parameters(source_db, target_db, entity_to_parameters):
                             if isinstance(target_parameter_def, dict):
                                 target_parameter_def_orig = target_parameter_def
                                 target_parameter_def = target_parameter_def.get("target")
+                            else:
+                                target_parameter_def_orig = target_parameter_def
                             entity_byname_list = []
                             for target_positions in target_parameter_def[2]:
                                 entity_bynames = []
@@ -696,7 +698,10 @@ def copy_entities_to_parameters(source_db, target_db, entity_to_parameters):
                                         entity_bynames.append(entity["name"])
                                 entity_byname_list.append("__".join(entity_bynames))
                             entity_byname_tuple = tuple(entity_byname_list)
-                            entity_byname_tuples = apply_for_each_entity_byname(entity_byname_tuple, target_parameter_def_orig, source_db)
+                            if isinstance(target_parameter_def_orig, dict):
+                                entity_byname_tuples = apply_for_each_entity_byname(entity_byname_tuple, target_parameter_def_orig, source_db)
+                            else:
+                                entity_byname_tuples = [entity_byname_tuple]
                             for entity_byname_tuple in entity_byname_tuples:
                                 if target_parameter_def[0] == "entity_name":
                                     if target_parameter_def[1] == "array":
