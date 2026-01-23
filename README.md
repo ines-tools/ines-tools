@@ -24,7 +24,11 @@ There is also a function to aggregate data using mappings of entity names betwee
 
 ## Installation
 
-At this stage, ines-tools are meant to be cloned and used through import statements, so it should be added to the same Python environment with the code using ines-tools.
+1. Clone this repository
+2. Open the python environment in which you installed spine toolbox (or in which you are running your ines conversion scripts) (`source path/to/python/environment/bin/activate` on linux `path/to/python/environment/Scripts/activate` on windows)
+3. Install ines tools with `pip install path/to/ines-tools`
+
+Otherwise treat it as a local module and use import statements accordingly.
 
 ## Contributing
 
