@@ -16,7 +16,6 @@ def write_param(target_db, entity_class, param, alternative_name, new_values, pa
     new_entity = False
     # Get the first entity_name
     entity_name = []
-
     if len(param_dims[2]) < len(param_dims[0]) + len(param_dims[1]):  # Take out the artificial class dimension
         class_dimen_positions = [0]
         inside_dimen_positions = param_dims[2][len(param_dims[0]) - 1:]
@@ -101,7 +100,6 @@ def write_param(target_db, entity_class, param, alternative_name, new_values, pa
         pass
 
 def read_mathprog_data(settings, url_db, file_name, param_dimens_file):
-
     dimens_to_param = settings["dimens_to_param"]
     class_for_scalars = settings["class_for_scalars"]
     alternative_name = settings["alternative_name"]
@@ -160,7 +158,6 @@ def read_mathprog_data(settings, url_db, file_name, param_dimens_file):
                     continue
             else:
                 continue
-
             make_set = False
             first_word = ""
             second_word = ""
@@ -185,7 +182,7 @@ def read_mathprog_data(settings, url_db, file_name, param_dimens_file):
                             class_name_to_parameters = True
                             break
                     if not class_name_found and not class_name_to_parameters:
-                        exit("No class found for set " + second_word)
+                        sys.exit("No class found for set " + second_word)
                     if class_name_found:
                         added = None
                         read_set_elements = False
@@ -236,6 +233,28 @@ def read_mathprog_data(settings, url_db, file_name, param_dimens_file):
                     current_untabbed_locations = []
                     found_param = False
                     tabbed_flag = False
+
+                    
+                    #dealing with the possibility of the format: 
+                    #param default 0 : AccumulatedAnnualDemand :=
+                    #RE1 AGRHEA 2015 0.188
+                    #Which is apparently valid MathProg syntax
+                    if second_word == "default":
+                        val = elements.pop(0)
+                        if elements[0] == ":":
+                            out = elements.pop(0)
+                            default_stuff = [second_word, val]
+                        else:
+                            default_stuff = [second_word, val, elements.pop(0)]
+                        second_word = elements.pop(0)
+                        #if elements[0] == ":=":
+                        #    out = elements.pop(0)
+                        first_element_equals = False
+                        if elements[0] == ':=':
+                            first_element_equals = True  
+                        elements = default_stuff + elements
+
+                    #sys.exit(-1)
                     for entity_class in class__param:  # Try to find the param from the DB structure, check all entity_classes
                         for param in class__param[entity_class]:  # Go through every parameter in the class
                             if second_word == param:              # If the parameter name matches DB parameter name
@@ -243,6 +262,7 @@ def read_mathprog_data(settings, url_db, file_name, param_dimens_file):
                                     current_entity_class_dimens = class__dimen[entity_class]  # Take the dimensions the parameter class has
                                 else:
                                     current_entity_class_dimens = [entity_class]
+                                
                                 if class__param__all_dimens[entity_class][param]:
                                     current_parameter_dimens = class__param__all_dimens[entity_class][param]
                                 current_list = []
@@ -326,7 +346,7 @@ def read_mathprog_data(settings, url_db, file_name, param_dimens_file):
                                     dim_number += 1
                                 read_tabbed = elements.pop(i+1)
                             continue
-                        if next_word == ':=':  # Skip := signs (unsignificant in MathProg)
+                        if next_word == ':=':  # Skip := signs (unsignificant in MathProg)  
                             continue
                         if next_word == ':':
                             colon_sign = True
@@ -382,6 +402,9 @@ def read_mathprog_data(settings, url_db, file_name, param_dimens_file):
                             temp = [-1 for _ in range(len(current_parameter_dimens) + 1)]
                             for j, tabbed_column_header_name in enumerate(data_headers[len(current_parameter_dimens) - 1]):
                                 value = elements.pop(i+1)
+                                if current_row_header[0] == '#':
+                                    print("ignored commented line in value row")
+                                    continue
                                 for d, u in enumerate(current_untabbed_locations):
                                     temp[u] = data_headers[d][data_counter[d]]
                                 temp[tabbed_row_orig_pos] = current_row_header
@@ -406,13 +429,16 @@ def read_mathprog_data(settings, url_db, file_name, param_dimens_file):
                                     print("Default value add_update commit failed")
                             elements.pop(i)
                             continue
+
                         if not colon_sign and i > 1:
                             while len(elements) > i + 1:
                                 temp = []
+                                if param_listing[param][0][0] == settings["class_for_scalars"]:
+                                    temp.append(settings["class_for_scalars"])
                                 for dimen in range(len(param_listing[param][2])):
                                     element = elements.pop(i)
                                     temp.append(element)
-                                    element = elements.pop(i)
+                                element = elements.pop(i)
                                 temp.append(element)
                                 new_values.append(copy.copy(temp))
                                 element = elements.pop(i)
