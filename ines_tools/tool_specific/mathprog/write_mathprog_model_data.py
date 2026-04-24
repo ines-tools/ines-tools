@@ -109,7 +109,7 @@ def write_mathprog_data(url_db, file, param_listing, settings):
                         separate_table_entity_dimens = []
                         separate_table_inside_dimens_len = 0
                         
-                        if settings["otoole_format"]:
+                        if "otoole_format" in settings and settings["otoole_format"]:
                             if len(inside_dimens) == 0:
                                 for k, entity_byname in enumerate(entity_bynames):
                                     line = []
