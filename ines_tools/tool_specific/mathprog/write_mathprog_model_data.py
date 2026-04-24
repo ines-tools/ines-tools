@@ -4,17 +4,20 @@ import sys
 import yaml
 
 def make_set_line(entity_class_name, target_db):
+
+    entities = target_db.get_entity_items(entity_class_name=entity_class_name)
+    #if len(entities) == 0:
+    #    return None
     line = []
     line.append("set")
     line.append(entity_class_name)
     line.append(":=")
-    entities = target_db.get_entity_items(entity_class_name=entity_class_name)
     for entity in entities:
         line.append(entity["name"])
     line.append(";")
     return " ".join(line)
 
-def write_mathprog_data(url_db, file, param_listing):
+def write_mathprog_data(url_db, file, param_listing, settings):
 
     class_for_scalars = "model"
 
@@ -47,7 +50,9 @@ def write_mathprog_data(url_db, file, param_listing):
             class__dimen[entity_class["name"]] = dimens_name_list
             if entity_class["name"] != class_for_scalars:
                 if len(class__dimen[entity_class["name"]]) == 0:
-                    print(make_set_line(entity_class["name"], target_db), file=file)
+                    line_out= make_set_line(entity_class["name"], target_db)
+                    if line_out:    
+                        print(line_out, file=file)
 
         for entity_class in entity_classes:
             for param_name, param_dimens in class__param__all_dimens[entity_class["name"]].items():
@@ -81,12 +86,17 @@ def write_mathprog_data(url_db, file, param_listing):
 
                 if values:
                     if len(param_listing[param_name][2]) < 2:
-                        line = []
+                        print("paramlisting_param_name",param_listing[param_name][2])
+                        print("values", values)
+                        line = ""
                         for i, value in enumerate(values):
-                            line.append(entity_bynames[i])
-                            for j, index in value.indexes:
-                                line.append(index)
-                            line.append(value.values[j])
+                            line += entity_bynames[i][0]
+                            if isinstance(value, api.Map):
+                                for j, index in enumerate(value.indexes):
+                                    line += "\t" + str(index)
+                                line += "\t" + str(value.values[j])
+                            else:
+                                line += "\t" + str(value)
                         print(line, file=file)
                     else:
                         if len(param_listing[param_name][2]) < len(param_listing[param_name][0]) + len(param_listing[param_name][1]):
@@ -98,101 +108,142 @@ def write_mathprog_data(url_db, file, param_listing):
                         all_dimens = entity_dimens + inside_dimens
                         separate_table_entity_dimens = []
                         separate_table_inside_dimens_len = 0
-
-                        if len(inside_dimens) == 0:
-                            separate_table_entity_dimens_len = len(all_dimens) - 2
-                            entity_byname_previous = entity_bynames[0]
-                            previous_table_start = 0
-                            for k, entity_byname in enumerate(entity_bynames):
-                                line = []
-                                if k == len(entity_bynames) - 1:
-                                    entity_byname_previous = ["", "", "", "", ""]
-                                if entity_byname[:separate_table_entity_dimens_len] != entity_byname_previous[
-                                                                                    :separate_table_entity_dimens_len]:
-                                    if separate_table_entity_dimens_len > 0:
-                                        for l in range(separate_table_entity_dimens_len):
-                                            line.append(entity_byname[l])
-                                            line.append(",")
-                                        line.append("*,*] : ")
-                                    line.append(":\t")
-                                    for entity_byname_temp in entity_bynames[previous_table_start:k + 1]:
-                                        line.append("\t")
-                                        line.append(entity_byname_temp[-1])
-                                    line.append("\t:=")
+                        
+                        if "otoole_format" in settings and settings["otoole_format"]:
+                            if len(inside_dimens) == 0:
+                                for k, entity_byname in enumerate(entity_bynames):
+                                    line = []
+                                    for l in range(len(entity_dimens)):
+                                        line.append(entity_byname[l])
+                                        line.append(" ")
+                                    line.append(str(values[k]))
                                     line = "".join(line)
                                     print(line, file=file)
-                                if entity_byname[:-1] != entity_byname_previous[:-1]:
+                            if len(inside_dimens) == 1:
+                                separate_table_entity_dimens_len = len(entity_dimens) - 1
+                                for k, entity_byname in enumerate(entity_bynames):
+                                    for i, val in enumerate(values[k].values):
+                                        line = []
+                                        for l in range(len(entity_dimens)):
+                                            line.append(entity_byname[l])
+                                            line.append(" ")
+                                        line.append(str(values[k].indexes[i]))
+                                        line.append(" ")
+                                        line.append(str(val))
+                                        line = "".join(line)
+                                        print(line, file=file)
+                            if len(inside_dimens) == 2:
+                                separate_table_entity_dimens_len = len(entity_dimens)
+                                for k, entity_byname in enumerate(entity_bynames):
+                                    for i, value_outer in enumerate(values[k].values):
+                                        for j, value_inner in enumerate(value_outer.values):
+                                            line = []
+                                            for l in range(len(entity_dimens)):
+                                                line.append(entity_byname[l])
+                                                line.append(" ")
+                                            line.append(str(values[k].indexes[i]))
+                                            line.append(" ")
+                                            line.append(str(values[k].values[i].indexes[j]))
+                                            line.append(" ")
+                                            line.append(str(value_inner))
+                                            line = "".join(line)
+                                            print(line, file=file)
+                        
+                        else:
+                            if len(inside_dimens) == 0:
+                                separate_table_entity_dimens_len = len(all_dimens) - 2
+                                entity_byname_previous = entity_bynames[0]
+                                previous_table_start = 0
+                                for k, entity_byname in enumerate(entity_bynames):
                                     line = []
-                                    line.append(entity_byname[-2])
+                                    if k == len(entity_bynames) - 1:
+                                        entity_byname_previous = ["", "", "", "", ""]
+                                    if entity_byname[:separate_table_entity_dimens_len] != entity_byname_previous[
+                                                                                        :separate_table_entity_dimens_len]:
+                                        if separate_table_entity_dimens_len > 0:
+                                            for l in range(separate_table_entity_dimens_len):
+                                                line.append(entity_byname[l])
+                                                line.append(",")
+                                            line.append("*,*] : ")
+                                        line.append(":\t")
+                                        for entity_byname_temp in entity_bynames[previous_table_start:k + 1]:
+                                            line.append("\t")
+                                            line.append(entity_byname_temp[-1])
+                                        line.append("\t:=")
+                                        line = "".join(line)
+                                        print(line, file=file)
+                                    if entity_byname[:-1] != entity_byname_previous[:-1]:
+                                        line = []
+                                        line.append(entity_byname[-2])
+                                        line.append("\t")
+                                        for value in values[previous_table_start:k + 1]:
+                                            line.append("\t")
+                                            line.append(str(value))
+                                        line = "".join(line)
+                                        print(line, file=file)
+                                        entity_byname_previous = entity_byname
+
+
+                            elif len(inside_dimens) == 1:
+                                separate_table_entity_dimens_len = len(entity_dimens) - 1
+                                entity_byname_previous = ["", "", "", "", ""]
+                                for k, entity_byname in enumerate(entity_bynames):
+                                    line = []
+                                    if separate_table_entity_dimens_len > 0:
+                                        if entity_byname[:separate_table_entity_dimens_len] != entity_byname_previous[:separate_table_entity_dimens_len]:
+                                            line.append("    [")
+                                            for l in range(separate_table_entity_dimens_len):
+                                                line.append(entity_byname[l])
+                                                line.append(",")
+                                            line.append("*,*]\t")
+                                    if entity_byname[:separate_table_entity_dimens_len] != entity_byname_previous[
+                                                                                        :separate_table_entity_dimens_len]:
+                                        line.append(":\t")
+                                        for index in values[k].indexes:
+                                            line.append("\t")
+                                            line.append(str(index))
+                                        line.append("\t:=")
+                                        line = "".join(line)
+                                        print(line, file=file)
+                                    entity_byname_previous = entity_byname
+                                    line = []
+                                    line.append(entity_byname[-1])
                                     line.append("\t")
-                                    for value in values[previous_table_start:k + 1]:
+                                    for value in values[k].values:
                                         line.append("\t")
                                         line.append(str(value))
                                     line = "".join(line)
                                     print(line, file=file)
-                                    entity_byname_previous = entity_byname
 
-
-                        elif len(inside_dimens) == 1:
-                            separate_table_entity_dimens_len = len(entity_dimens) - 1
-                            entity_byname_previous = ["", "", "", "", ""]
-                            for k, entity_byname in enumerate(entity_bynames):
-                                line = []
-                                if separate_table_entity_dimens_len > 0:
-                                    if entity_byname[:separate_table_entity_dimens_len] != entity_byname_previous[:separate_table_entity_dimens_len]:
+                            elif len(inside_dimens) == 2:
+                                separate_table_entity_dimens_len = len(entity_dimens)
+                                for k, entity_byname in enumerate(entity_bynames):
+                                    line = []
+                                    if separate_table_entity_dimens_len > 0:
                                         line.append("    [")
                                         for l in range(separate_table_entity_dimens_len):
                                             line.append(entity_byname[l])
                                             line.append(",")
                                         line.append("*,*]\t")
-                                if entity_byname[:separate_table_entity_dimens_len] != entity_byname_previous[
-                                                                                    :separate_table_entity_dimens_len]:
                                     line.append(":\t")
-                                    for index in values[k].indexes:
+                                    for index in values[k].values[0].indexes:
                                         line.append("\t")
                                         line.append(str(index))
                                     line.append("\t:=")
                                     line = "".join(line)
                                     print(line, file=file)
-                                entity_byname_previous = entity_byname
-                                line = []
-                                line.append(entity_byname[-1])
-                                line.append("\t")
-                                for value in values[k].values:
-                                    line.append("\t")
-                                    line.append(str(value))
-                                line = "".join(line)
-                                print(line, file=file)
-
-                        elif len(inside_dimens) == 2:
-                            separate_table_entity_dimens_len = len(entity_dimens)
-                            for k, entity_byname in enumerate(entity_bynames):
-                                line = []
-                                if separate_table_entity_dimens_len > 0:
-                                    line.append("    [")
-                                    for l in range(separate_table_entity_dimens_len):
-                                        line.append(entity_byname[l])
-                                        line.append(",")
-                                    line.append("*,*]\t")
-                                line.append(":\t")
-                                for index in values[k].values[0].indexes:
-                                    line.append("\t")
-                                    line.append(str(index))
-                                line.append("\t:=")
-                                line = "".join(line)
-                                print(line, file=file)
-                                for l, value_outer in enumerate(values[k].values):
-                                    line = []
-                                    line.append(values[k].indexes[l])
-                                    line.append("\t")
-                                    for value_inner in value_outer.values:
+                                    for l, value_outer in enumerate(values[k].values):
+                                        line = []
+                                        line.append(values[k].indexes[l])
                                         line.append("\t")
-                                        line.append(str(value_inner))
-                                    line = "".join(line)
-                                    print(line, file=file)
+                                        for value_inner in value_outer.values:
+                                            line.append("\t")
+                                            line.append(str(value_inner))
+                                        line = "".join(line)
+                                        print(line, file=file)
 
-                        elif len(inside_dimens) > 2:
-                            exit("More than two dimensions inside parameters not currently supported")
+                            elif len(inside_dimens) > 2:
+                                exit("More than two dimensions inside parameters not currently supported")
 
                 if values or param_default_value != None:
                     print(";", file=file)
@@ -213,6 +264,6 @@ if __name__ == "__main__":
         param_listing = yaml.safe_load(yaml_file)
 
     with open(settings["new_model_name"], 'w+') as output_file:
-        write_mathprog_data(url_db, output_file, param_listing)
+        write_mathprog_data(url_db, output_file, param_listing, settings)
 
 
